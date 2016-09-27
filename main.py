@@ -2,7 +2,7 @@
 # encoding:utf-8
 # main.py
 # 2016/9/25  17:46
-
+from __future__ import unicode_literals
 from colors import *
 import requests
 from bs4 import BeautifulSoup
@@ -60,7 +60,7 @@ class SMZDM(Web_Crawler):
             item = {}
             try:
                 #article_id  = item_origin['articleid']
-                time        = int(item_origin['timesort'])
+                item_time        = int(item_origin['timesort'])
                 _temp_url_price_title = item_origin.find('a', {'href':True, 'target':'_blank'})
                 url         = _temp_url_price_title['href']
                 title       = _temp_url_price_title.text
@@ -75,14 +75,14 @@ class SMZDM(Web_Crawler):
                 _temp_dimens = item_origin.find('div', {'class':'buy'}).find('a', {'href':True, 'onclick':re.compile(r'gtmAddToCart.*')})
 
                 if _temp_dimens is None:
-                    logger.error('====>%s, page:%s, index:%s, %s' % (green(_temp_dimens), page, index, green(title)))
-                    logger.error('url fetch failed. 无法获取到 gtmAddToCart函数的参数. 怀疑是专题类，略过')
+                    logger.debug('====>%s, page:%s, index:%s, %s' % (green(_temp_dimens), page, index, green(title)))
+                    logger.debug('url fetch failed. 无法获取到 gtmAddToCart函数的参数. 怀疑是专题类，略过')
                     continue
 
                 _temp_dimens = _temp_dimens['onclick']
                 _temp_dimens = re.match(r'.*({.*}).*', _temp_dimens).group(1)
                 _temp_dimens = json.loads(_temp_dimens.replace('"','``').replace('\'', '"'))
-                if show_debug:  print green(_temp_dimens)
+                if show_debug:  logger.debug(green(_temp_dimens))
                 #_temp_dimens = json.loads(_temp_dimens)
                 #print _temp_dimens
                 article_id  = _temp_dimens.get('id')
@@ -103,7 +103,7 @@ class SMZDM(Web_Crawler):
                 item['title']       = title
                 item['img_url']     = img_url
                 item['price']       = price
-                item['time']        = time
+                item['time']        = item_time
                 item['content']     = content
                 item['worth']       = worth
                 item['unworth']     = unworth
@@ -120,24 +120,43 @@ class SMZDM(Web_Crawler):
             finally:
                 pass
 
-            show_debug and logger.debug(red('\npage:%s item %s: ↓↓↓' % (page, index)))
-            for k,v in item.items():
-                show_debug and logger.debug('%s => %s' % (green(k),red(v)))
+            if (item['worth'] > 100) or (item['worth']+item['unworth']>20 and (float(item['worth']) / (item['worth']+item['unworth']+0.000001))>0.8) or (item['comment']>50):
+                show_debug and logger.info(red('\npage:%s item %s: ↓↓↓' % (page, index)))
+                logger.debug(red('\npage:%s item %s: ↓↓↓' % (page, index)))
+                for k,v in item.items():
+                    show_debug and logger.info('%s => %s' % (green(k),red(v)))
             #if index == 1: break
 
         return item_list
 
-def test_crawl_youhui():
-    global logger
-    logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_VERBOSE)
-    smzdm = SMZDM()
-    for i in range(21, 100):
+def test_crawl_youhui(smzdm, start=1,end=30):
+    for i in range(start, end+1):
         print green('crawl page:%s') % red(i)
-        smzdm.crawl_youhui(page=i, show_debug=False)
+        result     = smzdm.crawl_youhui(page=i, show_debug=False)
+        for item in result:
+            if (item['worth'] > 100) or (item['worth'] + item['unworth'] > 20 and (
+                float(item['worth']) / (item['worth'] + item['unworth'] + 0.000001)) > 0.8) or (item['comment'] > 50):
+
+                print "时间:%s   值:%s/%s  %s  评论:%s   价格:%s元  商品:%s => %s" % (
+                    time.strftime("%y-%m-%d %H:%M", time.localtime(item['time'])),
+
+                    red("%3s" % item['worth']),
+                    yellow("%-2s" % item['unworth']),
+                    red(item['worth_rate']),
+                    blue("%-2s" % item['comment']),
+                    green("%-5s" % item['price']),
+                    red(item['title']),
+                    red(item['url'])
+                )
+
         sleep_time = random.random() * 3
         print green('sleep for %s') % blue(sleep_time)
         time.sleep(sleep_time)
 
-
 if __name__ == '__main__':
-    test_crawl_youhui()
+    global logger
+    #logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_DEBUG)
+    logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_ERROR)
+    smzdm = SMZDM()
+
+    test_crawl_youhui(smzdm,1,30)

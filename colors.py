@@ -14,6 +14,7 @@ class Logger(object):
 
     LOG_LEVEL_ERROR     = 99
     LOG_LEVEL_DEBUG     = 50
+    LOG_LEVEL_INFO      = 10
     LOG_LEVEL_VERBOSE   = 1
 
     LOG_LEVEL_SILENCE   = 0
@@ -47,6 +48,9 @@ class Logger(object):
         self.cmd_mode   and self._cmd_log(text)
         self.file_mode  and self._file_log(text)
         self.db_mode    and self._db_log(text)
+
+    def info(self, text):
+        self._record(text, Logger.LOG_LEVEL_INFO);
 
     def error(self, text):
         self._record(text, Logger.LOG_LEVEL_ERROR)
