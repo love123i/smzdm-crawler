@@ -7,6 +7,8 @@ from colors import *
 import requests
 from bs4 import BeautifulSoup
 import traceback,sys,re,json,time,random
+from pymongo import MongoClient
+from db import DB
 
 DEBUG_MODE = True
 
@@ -94,7 +96,7 @@ class SMZDM(Web_Crawler):
                 category    = _temp_dimens.get('category')
                 dirty       = _temp_dimens.get('dimension32')
 
-                item['article_id']  = article_id
+                item['id']  = article_id
                 item['brand'] = brand
                 item['mall_url'] = mall_url
                 item['category'] = category
@@ -129,7 +131,7 @@ class SMZDM(Web_Crawler):
 
         return item_list
 
-def test_crawl_youhui(smzdm, start=1,end=30):
+def print_crawl_youhui(smzdm, start=1,end=30):
     for i in range(start, end+1):
         print green('crawl page:%s') % red(i)
         result     = smzdm.crawl_youhui(page=i, show_debug=False)
@@ -139,7 +141,6 @@ def test_crawl_youhui(smzdm, start=1,end=30):
 
                 print "时间:%s   值:%s/%s  %s  评论:%s   价格:%s元  商品:%s => %s" % (
                     time.strftime("%y-%m-%d %H:%M", time.localtime(item['time'])),
-
                     red("%3s" % item['worth']),
                     yellow("%-2s" % item['unworth']),
                     red(item['worth_rate']),
@@ -153,10 +154,24 @@ def test_crawl_youhui(smzdm, start=1,end=30):
         print green('sleep for %s') % blue(sleep_time)
         time.sleep(sleep_time)
 
+def save(data):
+    global db
+    try:
+        rt  = db.insert('Products', {'id':data['id']}, data)
+    except Exception as e:
+        logger.error(red("db save error: " + e))
+
+
 if __name__ == '__main__':
+    global db
+    db  = DB("127.0.0.1", 27017, db='SMZDM')
+
     global logger
     #logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_DEBUG)
     logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_ERROR)
     smzdm = SMZDM()
 
-    test_crawl_youhui(smzdm,1,30)
+    items = smzdm.crawl_youhui(page=1, show_debug=False)
+    for item in items:
+        save(item)
+    #print_crawl_youhui(smzdm,1,30)
