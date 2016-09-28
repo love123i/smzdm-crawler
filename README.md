@@ -20,4 +20,7 @@ mongod -dbpath "d:\mongodb\db" --logpath "d:\mongodb\log\mongodb.log" --journal 
 ```
 
 #### 方法二 服务
+1. 安装服务
 mongod -dbpath "d:\mongodb\db" --logpath "d:\mongodb\log\mongodb.log" --journal --storageEngine=mmapv1 --install --serviceName "MongoDB"
+2. 启动服务
+net start MongoDB
