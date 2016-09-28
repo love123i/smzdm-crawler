@@ -131,24 +131,27 @@ class SMZDM(Web_Crawler):
 
         return item_list
 
-def print_crawl_youhui(smzdm, start=1,end=30):
+def prettify_product_index(item):
+    print "时间:%s   值:%s/%s  %s  评论:%s   价格:%s元  商品:%s => %s" % (
+        time.strftime("%y-%m-%d %H:%M", time.localtime(item['time'])),
+        red("%3s" % item['worth']),
+        yellow("%-2s" % item['unworth']),
+        red(item['worth_rate']),
+        blue("%-2s" % item['comment']),
+        green("%-5s" % item['price']),
+        red(item['title']),
+        red(item['url'])
+    )
+
+def print_crawl_youhui(smzdm, start=1,end=30, save_db=False):
     for i in range(start, end+1):
         print green('crawl page:%s') % red(i)
         result     = smzdm.crawl_youhui(page=i, show_debug=False)
         for item in result:
-            if (item['worth'] > 100) or (item['worth'] + item['unworth'] > 20 and (
-                float(item['worth']) / (item['worth'] + item['unworth'] + 0.000001)) > 0.8) or (item['comment'] > 50):
-
-                print "时间:%s   值:%s/%s  %s  评论:%s   价格:%s元  商品:%s => %s" % (
-                    time.strftime("%y-%m-%d %H:%M", time.localtime(item['time'])),
-                    red("%3s" % item['worth']),
-                    yellow("%-2s" % item['unworth']),
-                    red(item['worth_rate']),
-                    blue("%-2s" % item['comment']),
-                    green("%-5s" % item['price']),
-                    red(item['title']),
-                    red(item['url'])
-                )
+            save_db and save(item)
+            # if (item['worth'] > 100) or (item['worth'] + item['unworth'] > 20 and (
+            #     float(item['worth']) / (item['worth'] + item['unworth'] + 0.000001)) > 0.8) or (item['comment'] > 50):
+            #     prettify_product_index(item)
 
         sleep_time = random.random() * 3
         print green('sleep for %s') % blue(sleep_time)
@@ -157,21 +160,27 @@ def print_crawl_youhui(smzdm, start=1,end=30):
 def save(data):
     global db
     try:
-        rt  = db.insert('Products', {'id':data['id']}, data)
+        rt  = db.insert('Products', 'id', data)
     except Exception as e:
-        logger.error(red("db save error: " + e))
+        logger.error(red("db save error: %s" % e))
 
+def print_youhui_from_db():
+    import pymongo
+    data   = db.find('Products', {'time':{'$gt':time.time()-24*60*60}}).sort('worth', pymongo.DESCENDING)
+    for item in data:
+        prettify_product_index(item)
 
 if __name__ == '__main__':
     global db
     db  = DB("127.0.0.1", 27017, db='SMZDM')
 
     global logger
-    #logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_DEBUG)
     logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_ERROR)
+
     smzdm = SMZDM()
 
-    items = smzdm.crawl_youhui(page=1, show_debug=False)
-    for item in items:
-        save(item)
-    #print_crawl_youhui(smzdm,1,30)
+    # :example: 抓取什么值得买数据
+    print_crawl_youhui(smzdm,1,100, save_db=True)
+
+    # :example: 从数据库中提取指定条件的数据
+    print_youhui_from_db()
