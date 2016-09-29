@@ -109,14 +109,14 @@ class SMZDM(Web_Crawler):
                 item['url']         = url
                 item['title']       = title
                 item['img_url']     = img_url
-                item['price']       = price
+                item['price']       = -1 if '无' in price else int(price)
                 item['time']        = item_time
                 item['content']     = content
-                item['worth']       = worth
-                item['unworth']     = unworth
+                item['worth']       = int(worth)
+                item['unworth']     = int(unworth)
                 item['mall']        = mall
-                item['favoriate']   = favoriate
-                item['comment']     = comment
+                item['favoriate']   = int(favoriate)
+                item['comment']     = int(comment)
                 item['worth_rate']  = '%.2f%%' % (float(worth) / (worth+unworth+0.000001) * 100)
                 item_list.append(item)
             except Exception as e:
@@ -270,18 +270,18 @@ if __name__ == '__main__':
     db  = DB("127.0.0.1", 27017, db='SMZDM')
 
     global logger
-    logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_DEBUG)
+    logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_ERROR)
 
     smzdm = SMZDM()
 
-    smzdm.crawl_faxian(show_more=True)
+    #smzdm.crawl_faxian(show_more=True)
 
     # :example: 抓取什么值得买数据
-    #crawl_youhui(smzdm,1,100, time_after=time.time()-6*60*60, show=False,save_db=True, sleep_time=2)
+    crawl_youhui(smzdm,1,100, time_after=time.time()-24*60*60, show=False,save_db=True, sleep_time=2)
 
     # :example: 从数据库中提取指定条件的数据
     #print_youhui_from_db(timeline=time.time()-24*60*60, sortby='worth', direction=-1)
     #
-    #print_youhui_from_db(timeline=time.time() - 24 * 60 * 60, sortby='price', direction=1)
+    print_youhui_from_db(timeline=time.time() - 24 * 60 * 60, sortby='price', direction=1)
 
     #新思路：各功能只负责爬取各优惠信息的地址URL，各优惠的具体信息则到具体的页面去爬取
