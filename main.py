@@ -44,7 +44,7 @@ class Web_Crawler(object):
 
     # 每一次访问至少间隔 time_http_interval
     def time_wait(self, st=None):
-        st and logger.debug(green('-->  %s' % st))
+        #st and logger.debug(green('-->  %s' % st))
         with Web_Crawler.lock:
             #logger.error(red('last visit:%s' % Web_Crawler.time_http_last))
             now = time.time()
@@ -53,13 +53,13 @@ class Web_Crawler(object):
             interval = now - last_visit
             Web_Crawler.time_http_last = now
             if interval>=Web_Crawler.time_http_interval:
-                logger.debug(red('interval:%s  sleep:%s' % (interval, 0)))
+                #logger.debug(red('interval:%s  sleep:%s' % (interval, 0)))
                 return
 
             wait = Web_Crawler.time_http_interval - interval
             logger.debug(red('sleep:%s' % wait))
             time.sleep(wait)
-        logger.debug(red('     over\n'))
+        #logger.debug(red('     over\n'))
 
     def http_get(self, url):
         self.time_wait('get:  %s' % url)
@@ -78,6 +78,12 @@ class SMZDM(Web_Crawler):
         self.count_parse_product = 0
 
     def crawl_youhui(self, page=1, show_debug=False):
+        '''
+        crawl_youhui(smzdm,1,100, time_after=time.time()-24*60*60, show=False,save_db=True, sleep_time=2)
+        :param page:
+        :param show_debug:
+        :return:
+        '''
         global logger
 
         url = 'http://www.smzdm.com/youhui/p%s' % page
@@ -200,9 +206,9 @@ class SMZDM(Web_Crawler):
 
             time_current    = items[-1]['timesort']
 
-            sleep = random.random() * sleep_time
-            logger.debug(green('sleep for %s') % blue(sleep))
-            time.sleep(sleep_time)
+            #sleep = random.random() * sleep_time
+            #logger.debug(green('sleep for %s') % blue(sleep))
+            #time.sleep(sleep_time)
 
         return item_list
 
@@ -318,14 +324,14 @@ class SMZDM(Web_Crawler):
 
 def prettify_product_index(item):
     print "时间:%s   值:%s/%s  %s  评论:%s   价格:%s元  商品:%s => %s" % (
-        time.strftime("%y-%m-%d %H:%M", time.localtime(item['time'])),
-        red("%3s" % item['worth']),
-        yellow("%-2s" % item['unworth']),
-        red(item['worth_rate']),
-        blue("%-2s" % item['comment']),
-        green("%-5s" % item['price']),
-        red(item['title']),
-        red(item['url'])
+        time.strftime("%y-%m-%d %H:%M", time.localtime(item.get('time',0))),
+        red("%3s" % item.get('worth',-1)),
+        yellow("%-2s" % item.get('unworth',-1)),
+        red(item.get('worth_rate',-1)),
+        blue("%-2s" % item.get('comment',-1)),
+        green("%-5s" % item.get('price',-1)),
+        red(item.get('title','null')),
+        red(item.get('url','null'))
     )
 
 def crawl_youhui(smzdm, start=1,end=30, time_after=0,show=False, save_db=False, sleep_time=3):
@@ -360,9 +366,42 @@ def print_youhui_from_db(timeline=0, sortby=None, direction=None):
     for item in data:
         prettify_product_index(item)
 
-def crawl_faxian(show_more=False, sleep_time=2):
-    saver = lambda x:save(x, model='ArticleList', key='id')
-    article_list = smzdm.crawl_faxian(show_more=False, sleep_time=2, time_line=time.time()-30*24*60*60, saver=saver)
+def task_crawl_faxian(show_more=False, sleep_time=2):
+    config = dict()
+    with open('faxian.config', 'a+') as cf:
+        try:
+            st = cf.read()
+            #print(st)
+            config = json.loads(st)
+            #print red(config)
+        except Exception as e:
+            logger.error('crawl_faxian.config read error: %s' % e)
+
+    while(True):
+        now = time.time()
+        time_line = config.get('last_time', now - 1 * 60 * 60)
+        # 异常时间 或 一次抓取超过10天的数据，统统重置为获取最近36个小时的数据
+        if (time_line >= now) or (now - time_line > 10 * 24 * 60 * 60):
+            time_line = now - 36 * 60 * 60
+
+        logger.error(green('crawl faxian in time:%s -> %s' % (time_line, now)))
+
+        saver = lambda x:save(x, model='ArticleList', key='id')
+        article_list = smzdm.crawl_faxian(show_more=False, sleep_time=2, time_line=time_line)
+
+        for item in article_list:
+            saver(item)
+
+        config['last_time'] = now
+        #print red(config)
+        with  open('faxian.config', 'w') as cf:
+            cf.write(json.dumps(config))
+
+        # 休眠N分钟后继续抓取
+        sleep_minute = 10
+        logger.error(red('抓取完一波，等待%s分钟后继续!' % sleep_minute))
+        time.sleep(sleep_minute*60)
+
 
 def task_parse_product( params):
     for param in params:
@@ -413,25 +452,28 @@ def parse_product():
 
 
 if __name__ == '__main__':
+    t1 = datetime.now()
+    print green(t1)
+
+
+
     global db
     global logger
     db  = DB("127.0.0.1", 27017, db='SMZDM')
     logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_INFO)
 
-
-    t1 = datetime.now()
-    print green(t1)
     smzdm = SMZDM()
 
-    #crawl_faxian()
-    parse_product()
+    # 放置到线程1中执行，常驻内存。每抓取一轮sleep一段时间，之后恢复抓取。中断后可继续上一次的执行
+    task_crawl_faxian()
 
-    t2 = datetime.now()
-    print green(t2)
-    print red(t2-t1)
+    # 放置到线程2中执行，常驻内存。解析一波结束后，sleep一小段时间，之后继续获取需重新获取的内容（最近24小时）
+    #parse_product()
+
+
 
     # :example: 抓取什么值得买数据
-    #crawl_youhui(smzdm,1,100, time_after=time.time()-24*60*60, show=False,save_db=True, sleep_time=2)
+    #
 
     # :example: 从数据库中提取指定条件的数据
     #print_youhui_from_db(timeline=time.time()-24*60*60, sortby='worth', direction=-1)
@@ -439,3 +481,7 @@ if __name__ == '__main__':
     #print_youhui_from_db(timeline=time.time() - 24 * 60 * 60, sortby='price', direction=1)
 
     #新思路：各功能只负责爬取各优惠信息的地址URL，各优惠的具体信息则到具体的页面去爬取
+
+    t2 = datetime.now()
+    print green(t2)
+    print red(t2 - t1)
