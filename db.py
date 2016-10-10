@@ -35,5 +35,8 @@ class DB(object):
 
         return self.db[table].update_one(filter_key, {'$set':data}, True).raw_result
 
-    def find(self, table, query):
+    def find_one(self, table, query=None):
+        return self.db[table].find_one(query)
+
+    def find(self, table, query=None):
         return self.db[table].find(query)
