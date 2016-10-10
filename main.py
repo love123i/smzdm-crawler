@@ -136,14 +136,14 @@ class SMZDM(Web_Crawler):
                 item['url']         = url
                 item['title']       = title
                 item['img_url']     = img_url
-                item['price']       = price
+                item['price']       = -1 if '无' in price else int(price)
                 item['time']        = item_time
                 item['content']     = content
-                item['worth']       = worth
-                item['unworth']     = unworth
+                item['worth']       = int(worth)
+                item['unworth']     = int(unworth)
                 item['mall']        = mall
-                item['favoriate']   = favoriate
-                item['comment']     = comment
+                item['favoriate']   = int(favoriate)
+                item['comment']     = int(comment)
                 item['worth_rate']  = '%.2f%%' % (float(worth) / (worth+unworth+0.000001) * 100)
                 item_list.append(item)
             except Exception as e:
@@ -430,9 +430,8 @@ if __name__ == '__main__':
     print green(t2)
     print red(t2-t1)
 
-
     # :example: 抓取什么值得买数据
-    #crawl_youhui(smzdm,1,100, time_after=time.time()-6*60*60, show=False,save_db=True, sleep_time=2)
+    #crawl_youhui(smzdm,1,100, time_after=time.time()-24*60*60, show=False,save_db=True, sleep_time=2)
 
     # :example: 从数据库中提取指定条件的数据
     #print_youhui_from_db(timeline=time.time()-24*60*60, sortby='worth', direction=-1)
