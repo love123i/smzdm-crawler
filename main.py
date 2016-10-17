@@ -37,9 +37,14 @@ class Web_Crawler(object):
         HTTP_HEADERS = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.101 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*',
+            #'Accept':'application/json, text/javascript, */*; q=0.01',
+            'Accept-Encoding':'gzip, deflate, sdch',
+            'Accept-Language':'zh-CN,zh;q=0.8',
             'Connection': 'keep-alive',
-            'Accept-Encoding': 'gzip, deflate',
-            'Host': self.host,
+            #'Accept-Encoding': 'gzip, deflate',
+            #'Host': self.host,
+            'Referer':'http://faxian.smzdm.com/',
+            'Host': 'faxian.smzdm.com',
         }
 
     # 每一次访问至少间隔 time_http_interval
@@ -47,7 +52,7 @@ class Web_Crawler(object):
         #st and logger.debug(green('-->  %s' % st))
         with Web_Crawler.lock:
             #logger.error(red('last visit:%s' % Web_Crawler.time_http_last))
-            now = time.time()
+            now = int(time.time())
             last_visit = Web_Crawler.time_http_last
 
             interval = now - last_visit
@@ -169,23 +174,34 @@ class SMZDM(Web_Crawler):
 
         return item_list
 
-    def crawl_faxian(self, time_current=time.time(), time_line=time.time() - 24 * 60 * 60, sleep_time=2, show_more=False, saver=False):
+    def crawl_faxian(self, time_line, sleep_time=2, show_more=False, saver=False):
         """
         :param saver: False|function
         """
         global logger
-        url_orign   = 'http://faxian.smzdm.com/a/json_more?timesort=%s'
+        #url_orign   = 'http://faxian.smzdm.com/a/json_more?timesort=%s'
+        url_orign = 'http://faxian.smzdm.com/json_more?timesort=%s'
         item_list   = []
 
+        time_current = time.time()
+        # time_line = time.time() - 24 * 60 * 60
+
+
+
         while time_current > time_line:
+            time_current = int(time_current)
             logger.debug('抓取 %s 期间的数据' % red(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time_current))))
 
             url = url_orign % time_current
             response = self.http_get(url)
+
+            print green(url), green(response.status_code)
+            #print green(response.content)
             items = json.loads(response.content, encoding='utf-8')
             logger.debug('抓取 %s 条数据' % red(len(items)))
 
             if len(items)==0:
+                logger.debug('抓取个数为0, url=%s' % red(url))
                 break
 
             if show_more:
@@ -206,25 +222,38 @@ class SMZDM(Web_Crawler):
 
             time_current    = items[-1]['timesort']
 
+            logger.debug(green("获取下一时间点的【发现频道】数据, next_time_point: %s" % (time_current,)))
+
             #sleep = random.random() * sleep_time
             #logger.debug(green('sleep for %s') % blue(sleep))
             #time.sleep(sleep_time)
 
         return item_list
 
-    def parse_product(self, url, get_comment=True, verbose=True):
-        logger.error('handle url:%s' % red(url))
+    def parse_product(self, url, get_comment=True, verbose=True, saver=None):
+        logger.debug('handle url:%s' % red(url))
 
         response = self.http_get(url)
+        if response.status_code!=200:
+            logger.error(red('crawl_faxian url:%s: error: %s' % (url, response.status_code)))
+
         soup = self.get_soup(response.content)
         verbose and logger.info(soup.prettify()) and logger.info(red('='*30))
 
-        soup_onclick = soup.find('a', {'href':True, 'onclick':re.compile(r'^change_direct_url.*')})
-        verbose and logger.info(soup_onclick)
-        temp_onclick = soup_onclick['onclick']
-        temp_onclick = re.match(r'.*({.*}).*', temp_onclick).group(1)
-        temp = json.loads(temp_onclick.replace('"', '``').replace('\'', '"'))
-        #print green(temp)
+        try:
+            soup_onclick = soup.find('a', {'href':True, 'onclick':re.compile(r'^change_direct_url.*')})
+
+            verbose and logger.info(soup_onclick)
+            temp_onclick = soup_onclick['onclick']
+
+            temp_onclick = re.match(r'.*({.*}).*', temp_onclick).group(1)
+            #print green(temp_onclick)
+            temp = json.loads(temp_onclick.replace('"', '``').replace("'", '"'), strict=False)
+            #print green(temp)
+        except Exception as e:
+            logger.error(red('crawl_faxian url:%s: error: %s, stack:\n%s' % (url, e, red(traceback.format_exc()))))
+            return False
+
         item = {}
         item['id']      = temp.get('id',None)
         item['title']   = temp.get('name',None)
@@ -244,7 +273,7 @@ class SMZDM(Web_Crawler):
 
         content = soup.find('div',{'class':'item-box item-preferential'})
         if content:
-            item['content'] = content.text.rstrip()
+            item['content'] = content.text.strip()
             temp = content.find('div',{'class':'inner-block'})
             item['content_1'] = temp.text.strip() if temp else ''
             temp = content.find('div', {'class': 'baoliao-block'})
@@ -252,15 +281,20 @@ class SMZDM(Web_Crawler):
             temp = content.find('div', {'class': 'baoliao-block news_content'})
             item['content_3'] = temp.text.strip() if temp else ''
 
-        imgList = soup.find('ul',{'class':'smallImgList'}).find_all('a',{'href':True,'rel':True})
+        imgList = soup.find('ul',{'class':'smallImgList'})
+        #print red(imgList)
         if imgList:
+            imgList = imgList.find_all('a', {'href': True, 'rel': True})
+            #print green(imgList)
             item['big_image_url'] = list()
             item['small_image_url'] = list()
+            #print green(imgList)
             for index,img in enumerate(imgList):
                 img_url = img.get('rel', None)
                 img_url and item['big_image_url'].append(img_url)
                 img_url = img.img.get('src', None)
                 img_url and item['small_image_url'].append(img_url)
+                index+=1
 
         try:
             item['worth'] = soup.find('span',{'id':'rating_worthy_num'}).text
@@ -279,14 +313,16 @@ class SMZDM(Web_Crawler):
         comments = list()
         while(current_soup):
             comment_list = current_soup.find('div', {'class': 'tab_info', 'id': 'commentTabBlockNew'})
-            comment_list = comment_list.find_all('li', {'class': 'comment_list'})
 
-            for comment_li in comment_list:
-                comment_id = re.match(r'.*_(\d*)', comment_li['id']).group(1)
+            if comment_list:
+                comment_list = comment_list.find_all('li', {'class': 'comment_list'})
 
-                comments.append(comment_li.find('p', {'class': 'p_content_%s' % comment_id}).text)
+                for comment_li in comment_list:
+                    comment_id = re.match(r'.*_(\d*)', comment_li['id']).group(1)
+                    #print comment_li.find('p', {'class': 'p_content_%s' % comment_id}).text
+                    comments.append(comment_li.find('p', {'class': 'p_content_%s' % comment_id}).text)
 
-            # comment_list = soup.find('div', {'class': 'tab_info', 'id': 'commentTabBlockHot'})
+                # comment_list = soup.find('div', {'class': 'tab_info', 'id': 'commentTabBlockHot'})
 
 
             next_page = current_soup.find('li',{'class':'pagedown'})
@@ -298,8 +334,9 @@ class SMZDM(Web_Crawler):
                     if html.status_code==200:
                         current_soup = self.get_soup(html.content)
 
-        item['comments'] = comments.reverse()
-
+        comments.reverse()
+        item['comments'] = comments
+        #print 'comment:%s  comments: %s' % (item['comment'], item['comments'])
 
         if verbose:
             for k, v in item.items():
@@ -319,7 +356,12 @@ class SMZDM(Web_Crawler):
         self.count_parse_product += 1
 
         logger.debug(green("---------------------\nsucess count:%s") % red(self.count_parse_product))
-        return item if item['id'] and item['title'] else None
+
+        item = item if item['id'] and item['title'] else None
+        item['last_update'] = time.time()
+        if item and saver:
+            saver(item)
+        return item
 
 
 def prettify_product_index(item):
@@ -350,23 +392,41 @@ def crawl_youhui(smzdm, start=1,end=30, time_after=0,show=False, save_db=False, 
         print green('sleep for %s') % blue(sleep_time)
         time.sleep(sleep_time)
 
-def save(data, model='Products', key='id'):
+def save(data, model=None, key='id', unexist=False):
     global db
     try:
-        rt  = db.insert(model, key, data)
+        if unexist:
+            rt  = db.insert_unexist(model, key, data)
+        else:
+            rt  = db.insert(model, key, data)
+        return rt
     except Exception as e:
         logger.error(red("db save error: %s" % e))
+        raise
 
 def print_youhui_from_db(timeline=0, sortby=None, direction=None):
+    '''
+    :example: 从数据库中提取指定条件的数据
+    print_youhui_from_db(timeline=time.time()-24*60*60, sortby='worth', direction=-1)
+
+    print_youhui_from_db(timeline=time.time() - 24 * 60 * 60, sortby='price', direction=1)
+    '''
+
     #timestamp = int(time.mktime((datetime.now() - timedelta(days=1)).replace(hour=0, minute=0, second=0).timetuple()))
-    data   = db.find('Products', {'time':{'$gt':timeline}})
+    data   = db.find(DB_TABLE_PRODUCT, {'time':{'$gt':timeline}})
     if sortby is not None:
         data = data.sort(sortby, direction)
 
     for item in data:
         prettify_product_index(item)
 
-def task_crawl_faxian(show_more=False, sleep_time=2):
+def task_crawl_faxian(daemon=True):
+    '''
+    任务1——抓取发现频道的指定时间内的数据
+    '''
+    smzdm = SMZDM()
+
+    ############# 读取配置
     config = dict()
     with open('faxian.config', 'a+') as cf:
         try:
@@ -378,110 +438,182 @@ def task_crawl_faxian(show_more=False, sleep_time=2):
             logger.error('crawl_faxian.config read error: %s' % e)
 
     while(True):
-        now = time.time()
-        time_line = config.get('last_time', now - 1 * 60 * 60)
+        now = int(time.time())
+        time_line = config.get('last_time', now - 24 * 60 * 60)
         # 异常时间 或 一次抓取超过10天的数据，统统重置为获取最近36个小时的数据
         if (time_line >= now) or (now - time_line > 10 * 24 * 60 * 60):
             time_line = now - 36 * 60 * 60
 
-        logger.error(green('crawl faxian in time:%s -> %s' % (time_line, now)))
+        time_st1 = time.strftime( '%Y-%m-%d %X', time.localtime(time_line))
+        time_st2 = time.strftime('%Y-%m-%d %X', time.localtime(now))
+        logger.record('%s 抓取【发现频道】, 时间范围: %s -> %s' % (tool_time_strftime(), red(time_st1), red(time_st2)))
 
-        saver = lambda x:save(x, model='ArticleList', key='id')
-        article_list = smzdm.crawl_faxian(show_more=False, sleep_time=2, time_line=time_line)
+        article_list = list()
+        crawl_count = 0
+        insert_count = 0
+        try:
+            ############# 开始抓取数据配置
+            saver = lambda x:save(x, model=DB_TABLE_LIST, key='id', unexist=True)
+            article_list = smzdm.crawl_faxian(show_more=False, sleep_time=2, time_line=time_line)
+            print 'len:%s' % len(article_list)
 
-        for item in article_list:
-            saver(item)
+            ############# 对新抓取到的商品url，设置其未解析状态
+            for item in article_list:
 
-        config['last_time'] = now
-        #print red(config)
-        with  open('faxian.config', 'w') as cf:
-            cf.write(json.dumps(config))
+                item['parsed'] = 0
+                item['create'] = now
+                rt = saver(item)
+                crawl_count += 1
+                #print item
+                if rt:
+                    #print 'rt:%s' % rt
+                    insert_count += 1
+
+            config['last_time'] = now
+            #print red(config)
+            ############# 保存配置
+            with  open('faxian.config', 'w') as cf:
+                cf.write(json.dumps(config))
+        except Exception as e:
+            logger.error(red('task_crawl_faxian: error: %s, stack:\n%s' % (e, red(traceback.format_exc()))))
+
+        if not daemon:
+            return
 
         # 休眠N分钟后继续抓取
-        sleep_minute = 10
-        logger.error(red('抓取完一波，等待%s分钟后继续!' % sleep_minute))
+        sleep_minute = 30
+        logger.record(red('%s 【发现频道——Over】 共抓取%s条数据, 有效新数据%s条， 等待%s分钟后继续, 下一轮时间: %s!' % (tool_time_strftime(), crawl_count, insert_count, sleep_minute, tool_time_strftime(timestamp=now+sleep_minute*60))))
         time.sleep(sleep_minute*60)
 
 
-def task_parse_product( params):
-    for param in params:
-        func = param[0]
-        param = param[1:]
-        func(*param)
+def task_parse_product(daemon=True):
+    '''
+    任务——解析所有未解析的商品具体信息
+    '''
+    ############# 参数配置
+    limit = 1000
+    verbose = False
+    get_comment_interval = 6 * 60 * 60
 
-def parse_product():
-    pool = Pool(5)
+    now = int(time.time())
+    smzdm = SMZDM()
 
-    article_list = db.find('ArticleList',{}).limit(100).sort('timesort',-1)
+    ############# 初始化——读取配置
+    config = dict()
+    with open('parse_product.config', 'a+') as cf:
+        try:
+            st = cf.read()
+            config = json.loads(st)
+        except Exception as e:
+            logger.error(red('crawl_faxian.config read error: %s' % e))
+    last_get_comment_time = config.get('last_get_comment_time', now - get_comment_interval)
 
-    # for record in article_list:
-    #     id = record['id']
-    #     url = record['url']
-    url = 'http://www.smzdm.com/p/6472917/'
+    get_comment=True if last_get_comment_time+get_comment_interval<=now else False
 
-    task_params = [[smzdm.parse_product, url,False,False] for i in range(10)]
-    #pool.map_async(smzdm.parse_product, urls)
-
-
-    # for param in task_params:
-    #     pool.apply_async(smzdm.parse_product, (param))
-
-    # for i in range(4):
-    #     pool.apply_async(task_parse_product, (task_params,))
-    # pool.close()
-    # pool.join()
-
-    task_params = [[url, False, False] for i in range(40)]
-    for param in task_params:
-        smzdm.parse_product(*param)
+    saver = lambda x: save(x, model=DB_TABLE_PRODUCT, key='id')
 
 
+    while True:
+        try:
+            ############# 从数据库中获取需解析的商品列表
+            # 只解析【未被解析过的】、【距离上次解析超过3小时，且商品信息创建时间小于36小时，即: 只维护3天内的商品信息】
+            article_list = db.find(DB_TABLE_LIST, {'$or':[{'parsed':0}, {'parsed':{'$ne':0, '$lt':now-3*60*60}, 'create':{'$gt':now-36*60*60}}]} ).limit(limit).sort('timesort', -1)
+            logger.record('%s 【商品数据】 开始解析，数量:%s, 是否抓取更多评论:%s' % (tool_time_strftime(), red(article_list.count() if article_list.count()<limit else limit), red(get_comment)))
 
-    print 'ok'
-    return
+            ############# 开始解析
+            count = 0
+            for item in article_list:
+                if item.get('url',None) is not None:
+                    count += 1
+                    try:
+                        smzdm.parse_product(item['url'], get_comment=get_comment, verbose=verbose, saver=saver)
+                    except Exception,e:
+                        logger.error(red('smzdm.parse_product error! url: %s exception:"%s", stack:%s' % (item['url'], e, red(traceback.format_exc()))))
+                        count -= 1
+                        continue
+                    item['parsed'] = now
+                    save(item, model=DB_TABLE_LIST, key='id')
+            logger.record('%s 【商品数据】 本次解析成功，数量: %s' % (tool_time_strftime(), red(count)))
 
+            ############# 保存配置
+            config['last_get_comment_time'] = now
+            with  open('parse_product.config', 'w') as cf:
+                cf.write(json.dumps(config))
+        except Exception as e:
+            logger.error(red('task_parse_product error! exception:"%s", stack:%s' % (e, traceback.format_exc())))
 
-    url = 'http://www.smzdm.com/p/6472917/'
-    product = None
-    try:
-        product = smzdm.parse_product(url, verbose=False)
-        #product['time'] =
-    except Exception as e:
-        logger.error('parse_product error: %s' % red(e))
-    product and product['id'] and save(product)
+        if not daemon:
+            return
 
+        # 休眠N分钟后继续抓取
+        sleep_minute = 15
+        logger.record(red('%s 【商品数据】 解析完一波，等待%s分钟后继续, 下一轮时间: %s!' % (tool_time_strftime(), sleep_minute, tool_time_strftime(timestamp=now+sleep_minute*60))))
+        time.sleep(sleep_minute * 60)
+
+def task_clean():
+    while True:
+        ################# 清理异常数据
+        logger.record('%s【数据库异常数据清理——Start】' % tool_time_strftime())
+        count = 0
+        rt = db.remove(DB_TABLE_LIST, {'url':{'$exists':False}})
+        count += rt.get('n',0)
+        rt = db.remove(DB_TABLE_PRODUCT, {'id':{'$exists':False}})
+        count += rt.get('n', 0)
+        logger.record('【数据库异常数据清理——Over】共清理 %s 条异常数据' % red(count))
+
+        ################# 清理过时数据
+        time_out_hour = 36
+        logger.record('【数据库过时数据清理——Start】超时时间: %s小时' % red(time_out_hour))
+        count = 0
+        rt = db.remove(DB_TABLE_LIST, {'create':{'$lt':time_out_hour*60*60}})
+        count += rt.get('n', 0)
+        rt = db.remove(DB_TABLE_PRODUCT, {'last_update':{'$lt':time_out_hour* 60*60}})
+        count += rt.get('n', 0)
+        logger.record('【数据库过时数据清理——Over】清理 %s 条过时数据' % red(count))
+        ################# 休眠
+        sleep_hour = 12
+        logger.record(red('%s 【数据库数据清理】 清理完一波，等待%s小时后继续, 下一轮时间: %s!' % (tool_time_strftime(), sleep_hour, tool_time_strftime(timestamp=time.time()+sleep_hour*60*60))))
+        time.sleep(sleep_hour*60*60)
+
+DB_TABLE_LIST = 'ArticleList'
+DB_TABLE_PRODUCT = 'Products'
+
+def tool_time_strftime(format="%Y-%m-%d %H:%M:%S", timestamp=None):
+    p_tuple = None if not timestamp else time.localtime(timestamp)
+    return time.strftime(format) if not p_tuple else time.strftime(format, p_tuple)
+
+def run():
+    # 放置到线程1中执行，常驻内存。每抓取一轮sleep一段时间，之后恢复抓取。中断后可继续上一次的执行
+    t1 = threading.Thread(target=task_crawl_faxian, args=(True,))
+    t1.start()
+
+    # 放置到线程2中执行，常驻内存。解析一波结束后，sleep一小段时间，之后继续获取需重新获取的内容（最近24小时）
+    t2 = threading.Thread(target=task_parse_product, args=(True,))
+    t2.start()
+
+    # 放置到线程3中执行，常驻内存。每隔1天运行一次
+    t3 = threading.Thread(target=task_clean)
+    t3.start()
+
+    t1.join()
+    t2.join()
+    t3.join()
 
 if __name__ == '__main__':
-    t1 = datetime.now()
-    print green(t1)
+    ############ 记录程序开始时间
+    time1 = datetime.now()
 
 
-
+    ############ 初始化【数据库】、【日志】
     global db
     global logger
     db  = DB("127.0.0.1", 27017, db='SMZDM')
-    logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_INFO)
+    logger = Logger(cmd_mode=True, level=Logger.LOG_LEVEL_DEBUG)
+    logger.record('开始时间:%s' % green(time1))
 
-    smzdm = SMZDM()
+    run()
 
-    # 放置到线程1中执行，常驻内存。每抓取一轮sleep一段时间，之后恢复抓取。中断后可继续上一次的执行
-    task_crawl_faxian()
-
-    # 放置到线程2中执行，常驻内存。解析一波结束后，sleep一小段时间，之后继续获取需重新获取的内容（最近24小时）
-    #parse_product()
-
-
-
-    # :example: 抓取什么值得买数据
-    #
-
-    # :example: 从数据库中提取指定条件的数据
-    #print_youhui_from_db(timeline=time.time()-24*60*60, sortby='worth', direction=-1)
-    #
-    #print_youhui_from_db(timeline=time.time() - 24 * 60 * 60, sortby='price', direction=1)
-
-    #新思路：各功能只负责爬取各优惠信息的地址URL，各优惠的具体信息则到具体的页面去爬取
-
-    t2 = datetime.now()
-    print green(t2)
-    print red(t2 - t1)
+    ############ 记录程序结束时间
+    time2 = datetime.now()
+    logger.record('结束时间:%s' % green(time2))
+    logger.record('总消耗时间:%s' % green(time2 - time1))
