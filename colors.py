@@ -10,14 +10,14 @@ copy from fabric/colors.py
 import os,time
 
 class Logger(object):
-    LOG_LEVEL_RECORD    = 100
+
 
     LOG_LEVEL_ERROR     = 99
+    LOG_LEVEL_RECORD    = 90
     LOG_LEVEL_DEBUG     = 50
     LOG_LEVEL_INFO      = 10
     LOG_LEVEL_VERBOSE   = 1
 
-    LOG_LEVEL_SILENCE   = 0
 
     def __init__(self, cmd_mode=True, file_mode=False, db_mode=False, filename=None, level=LOG_LEVEL_VERBOSE):
         if not filename:
@@ -41,7 +41,7 @@ class Logger(object):
     def _db_log(self, text):
         pass
 
-    def _record(self, text, level):
+    def _print(self, text, level):
         if level < self.level:
             return
 
@@ -49,20 +49,23 @@ class Logger(object):
         self.file_mode  and self._file_log(text)
         self.db_mode    and self._db_log(text)
 
+    def record(self, text):
+        self._print(text, Logger.LOG_LEVEL_RECORD)
+
     def info(self, text):
-        self._record(text, Logger.LOG_LEVEL_INFO);
+        self._print(text, Logger.LOG_LEVEL_INFO)
 
     def error(self, text):
-        self._record(text, Logger.LOG_LEVEL_ERROR)
+        self._print(text, Logger.LOG_LEVEL_ERROR)
 
     def debug(self, text):
-        self._record(text, Logger.LOG_LEVEL_DEBUG)
+        self._print(text, Logger.LOG_LEVEL_DEBUG)
 
     def verbose(self, text):
-        self._record(text, Logger.LOG_LEVEL_VERBOSE)
+        self._print(text, Logger.LOG_LEVEL_VERBOSE)
 
-    def dblog(self, text):
-        self._record(text, Logger.LOG_LEVEL_RECORD)
+    # def dblog(self, text):
+    #     self._print(text, Logger.LOG_LEVEL_RECORD)
 
 
 

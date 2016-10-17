@@ -15,6 +15,21 @@ class DB(object):
     def get_db(self, table):
         return self.db[table]
 
+    def insert_unexist(self, table, keys, data):
+        filter_key = {}
+        if not isinstance(keys, list):
+            keys = [keys]
+
+        for key in keys:
+            filter_key[key] = data[key]
+
+        found = self.find_one(table, filter_key)
+        if found:
+            return False
+        else:
+            return self.insert(table, keys, data)
+
+
     def insert(self, table, keys, data):
         """将一条记录存储到数据库中(若已存在则更新)
         :param table:   str, 待插入的表名(collection)
@@ -35,5 +50,11 @@ class DB(object):
 
         return self.db[table].update_one(filter_key, {'$set':data}, True).raw_result
 
-    def find(self, table, query):
+    def find_one(self, table, query=None):
+        return self.db[table].find_one(query)
+
+    def find(self, table, query=None):
         return self.db[table].find(query)
+
+    def remove(self, table, query=None, multi=True, **kwargs):
+        return self.db[table].remove(query,multi,**kwargs)
