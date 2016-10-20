@@ -87,3 +87,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+.idea/*
+parse_product.config
+faxian.config
