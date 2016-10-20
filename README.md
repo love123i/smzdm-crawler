@@ -3,11 +3,20 @@
 # 需要环境:
 ```sh
 # python2.7
-pip install fabric
 pip install beautifulsoup4
 pip install html5lib
 pip install requests    # require https://www.microsoft.com/en-us/download/confirmation.aspx?id=44266
 pip install pymongo     # http://www.mongodb.org/downloads
+```
+
+## Linux 基础环境配置
+```
+# 请谨慎操作, 注意python版本
+#更新内核
+yum update -y
+#安装开发工具
+yum groupinstall Base "Development Tools" -y
+yum -y install python-setuptools
 ```
 
 ## win32 下启动mongo
