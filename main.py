@@ -2,7 +2,7 @@
 # encoding:utf-8
 # main.py
 # 2016/9/25  17:46
-from __future__ import unicode_literals
+#from __future__ import unicode_literals    # 引入该局，会导致在Linux中运行时报错  UnicodeError
 from colors import *
 import requests
 from bs4 import BeautifulSoup
@@ -11,7 +11,7 @@ import threading
 from datetime import datetime,timedelta
 from db import DB
 #from concurrent.future import ThreadPoolExecutor  # python 3
-from multiprocessing.dummy import Pool
+#from multiprocessing.dummy import Pool
 
 DEBUG_MODE = True
 
@@ -21,7 +21,9 @@ class Web_Crawler(object):
     lock = threading.Lock()
 
     @staticmethod
-    def get_soup(content='', features='html5lib'):
+    def get_soup(content='', features='html.parser'):
+        # 若有问题，可以改用 "html.parser"
+        # html5lib
         return BeautifulSoup(content, features)
 
     def __init__(self, host):
@@ -515,6 +517,7 @@ def task_parse_product(daemon=True):
 
     while True:
         try:
+            now = int(time.time())
             ############# 从数据库中获取需解析的商品列表
             # 只解析【未被解析过的】、【距离上次解析超过3小时，且商品信息创建时间小于36小时，即: 只维护3天内的商品信息】
             article_list = db.find(DB_TABLE_LIST, {'$or':[{'parsed':0}, {'parsed':{'$ne':0, '$lt':now-3*60*60}, 'create':{'$gt':now-36*60*60}}]} ).limit(limit).sort('timesort', -1)
@@ -562,12 +565,13 @@ def task_clean():
         logger.record('【数据库异常数据清理——Over】共清理 %s 条异常数据' % red(count))
 
         ################# 清理过时数据
+        now = int(time.time())
         time_out_hour = 36
         logger.record('【数据库过时数据清理——Start】超时时间: %s小时' % red(time_out_hour))
         count = 0
-        rt = db.remove(DB_TABLE_LIST, {'create':{'$lt':time_out_hour*60*60}})
+        rt = db.remove(DB_TABLE_LIST, {'create':{'$lt':now - time_out_hour*60*60}})
         count += rt.get('n', 0)
-        rt = db.remove(DB_TABLE_PRODUCT, {'last_update':{'$lt':time_out_hour* 60*60}})
+        rt = db.remove(DB_TABLE_PRODUCT, {'last_update':{'$lt':now - time_out_hour* 60*60}})
         count += rt.get('n', 0)
         logger.record('【数据库过时数据清理——Over】清理 %s 条过时数据' % red(count))
         ################# 休眠
@@ -600,6 +604,9 @@ def run():
     t3.join()
 
 if __name__ == '__main__':
+    reload(sys)
+    sys.setdefaultencoding('utf-8')
+
     ############ 记录程序开始时间
     time1 = datetime.now()
 
